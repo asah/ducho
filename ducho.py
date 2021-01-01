@@ -11,6 +11,8 @@ except ImportError:
 randseed=int(os.environ.get("RANDSEED", datetime.datetime.now().microsecond))
 random.seed(randseed)
 
+dbg=(int(os.environ.get("DBG", 0)) != 0)
+
 # mode to generate some data, run with GENERATE=1000 ./ducho.py to generate 1000 records
 gen=int(os.environ.get("GENERATE", "0"))
 if gen > 0:
@@ -57,8 +59,8 @@ def parseFile(filename):
       item["longitudeE7"] = item["longitudeE7"] - 4294967296
     ts = item["timestampMs"] / 1000
     res.append([ ts, item["latitudeE7"]/10000000.0, item["longitudeE7"]/10000000.0 ])
-    #if len(res) % 100 == 0: print(".", end="", flush=True)
-  #print("")
+    if dbg and len(res) % 100 == 0: print(".", end="", flush=True)
+  if dbg: print("")
   return res
   
 locs1=sorted(parseFile(sys.argv[1]), key=lambda rec: rec[0])
@@ -74,30 +76,46 @@ if len(locs2) == 0:
 def avg(x,y):
   return (x+y)/2.0
 
+
 i1 = i2 = 0
 while i1 < len(locs1):
-  loc1 = locs1[i1]
-  loc2 = locs2[i2]
-  ts1 = loc1[0]
-  ts2 = loc2[0]
   # check time
-  if abs(ts1 - ts2) < max_tsdiff_secs:
-    #print(f"near in time: diff={abs(ts1 - ts2)} ts1={ts1} ts2={ts2}", end="")
+  old_i1=i1
+  old_i2=i2
+  while True:
+    loc1 = locs1[i1]
+    loc2 = locs2[i2]
+    ts1 = loc1[0]
+    ts2 = loc2[0]
+    if abs(ts1 - ts2) >= max_tsdiff_secs:
+      break
+    if dbg: print(f"i1={i1:5d},i2={i2:5d}  near in time: diff={abs(ts1 - ts2):6.0f} ts1={ts1:.0f} ts2={ts2:.0f}", end="")
     # check distance
-    dist=haversine.haversine( loc1[1:], loc2[1:])
-    #print(f"  dist={dist}")
+    dist = haversine.haversine( loc1[1:], loc2[1:])
+    if dbg: print(f"  dist={dist:6.3f}")
     if dist < max_dist_km:
-      print(f"colocated!  tsdiff: {abs(ts1 - ts2):3.0f} secs   dist: {dist:2.2f} km  "
+      print(f"==> colocated!  tsdiff: {abs(ts1 - ts2):6.0f} secs   dist: {dist:2.2f} km  "
             f"roughly {datetime.datetime.fromtimestamp(avg(ts1,ts2)).strftime('%Y-%m-%d %H:%M')} @ "
-            f"{avg(loc1[1],loc2[1]):3.3f},{avg(loc1[2],loc2[2]):3.3f}")
-
+            f"{avg(loc1[1],loc2[1]):3.4f},{avg(loc1[2],loc2[2]):3.4f}")
+    # advance the younger of the counters
+    if ts1 > ts2 or i2 == len(locs2)-1:
+      if dbg: print(f"  advancing i1 until ts diff >= {max_tsdiff_secs}")
+      i1 += 1
+    elif i1 == len(locs1)-1:
+      break
+    else:
+      if dbg: print(f"  advancing i2 until ts diff >= {max_tsdiff_secs}")
+      i2 += 1
+    
+  i1=old_i1
+  i2=old_i2
   # advance the older of the counters
-  #print(f"ts1={ts1} ts2={ts2} i1={i1} i2={i2}... ", end="", flush=True)
+  if dbg: print(f"ts1={ts1:.0f} ts2={ts2:.0f} diff={abs(ts1 - ts2):6.0f} i1={i1} i2={i2}... ", end="", flush=True)
   if ts1 < ts2 or i2 == len(locs2)-1:
-    #print(f"advancing i1.")
+    if dbg: print(f"advancing i1.")
     i1 += 1
     continue
   i2 += 1
-  #print(f"advancing i2.")
+  if dbg: print(f"advancing i2.")
 
 
